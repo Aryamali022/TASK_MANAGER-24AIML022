@@ -1,28 +1,36 @@
 import { useState, useEffect } from 'react';
 import Header from '../components/header';
 import TaskList from '../components/tasklist';
+import { api } from '../api';
 
-// Vite forwards "/tasks" to http://localhost:5000/tasks (see vite.config.js)
-const API = '/tasks';
-
-const SERVER_DOWN = 'Cannot reach the server. Is the backend running on port 5000?';
-
-function TaskPage() {
-  const [tasks, setTasks] = useState([]);   // the list from MongoDB
+// The task screen. It only renders once we have a token.
+// Every request below passes that token, which the backend's auth
+// middleware checks before the route runs.
+function TaskPage({ token, email, onLogout }) {
+  const [tasks, setTasks] = useState([]);
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
   const [error, setError] = useState('');
 
-  // Read all tasks from the backend and put them into state.
+  // If the token has expired the backend answers 401, and we log out so the
+  // user sees the login screen instead of a dead page.
+  function handleError(err) {
+    if (err.status === 401) {
+      onLogout();
+    } else {
+      setError(err.message);
+    }
+  }
+
+  // Read this user's tasks and put them into state.
   // Every change below calls this again, so the screen always matches the database.
   async function loadTasks() {
     try {
-      const res = await fetch(API);
-      const data = await res.json();
+      const data = await api('/tasks', { token });
       setTasks(data);
       setError('');
-    } catch {
-      setError(SERVER_DOWN);
+    } catch (err) {
+      handleError(err);
     }
   }
 
@@ -30,6 +38,9 @@ function TaskPage() {
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect
     loadTasks();
+    // loadTasks is intentionally left out: adding it would re-run this on
+    // every render, because the function is recreated each time.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   // ---- Add ---------------------------------------------------------------
@@ -42,40 +53,40 @@ function TaskPage() {
     }
 
     try {
-      await fetch(API, {
+      await api('/tasks', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ title, description }),
+        body: { title, description },
+        token,
       });
       setTitle('');
       setDescription('');
       loadTasks();
-    } catch {
-      setError(SERVER_DOWN);
+    } catch (err) {
+      handleError(err);
     }
   }
 
   // ---- Tick / untick -----------------------------------------------------
   async function toggleTask(task) {
     try {
-      await fetch(`${API}/${task._id}`, {
+      await api(`/tasks/${task._id}`, {
         method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ completed: !task.completed }),
+        body: { completed: !task.completed },
+        token,
       });
       loadTasks();
-    } catch {
-      setError(SERVER_DOWN);
+    } catch (err) {
+      handleError(err);
     }
   }
 
   // ---- Delete ------------------------------------------------------------
   async function removeTask(id) {
     try {
-      await fetch(`${API}/${id}`, { method: 'DELETE' });
+      await api(`/tasks/${id}`, { method: 'DELETE', token });
       loadTasks();
-    } catch {
-      setError(SERVER_DOWN);
+    } catch (err) {
+      handleError(err);
     }
   }
 
@@ -83,7 +94,12 @@ function TaskPage() {
 
   return (
     <div className="container">
-      <Header total={tasks.length} done={doneCount} />
+      <Header
+        total={tasks.length}
+        done={doneCount}
+        email={email}
+        onLogout={onLogout}
+      />
 
       <form className="task-form" onSubmit={addTask}>
         <input

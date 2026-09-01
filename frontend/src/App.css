@@ -101,3 +101,77 @@
   font-size: 14px;
   margin: 0 0 12px;
 }
+
+/* ---- auth screen ---- */
+.container.narrow {
+  max-width: 380px;
+}
+
+.container.narrow h1 {
+  font-size: 24px;
+  margin: 0 0 20px;
+}
+
+.auth-form {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.auth-form input {
+  padding: 10px;
+  border: 1px solid #ccc;
+  border-radius: 6px;
+  font-size: 14px;
+}
+
+.auth-form button {
+  padding: 10px 16px;
+  border: none;
+  border-radius: 6px;
+  background: #2563eb;
+  color: #fff;
+  font-size: 14px;
+  cursor: pointer;
+}
+
+.auth-form button:hover {
+  background: #1d4ed8;
+}
+
+.switch {
+  margin-top: 16px;
+  font-size: 14px;
+  color: #666;
+}
+
+.link {
+  border: none;
+  background: none;
+  padding: 0;
+  color: #2563eb;
+  font-size: 14px;
+  cursor: pointer;
+  text-decoration: underline;
+}
+
+/* ---- header with logout ---- */
+.header-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.logout {
+  border: 1px solid #ccc;
+  background: #fff;
+  color: #333;
+  padding: 6px 12px;
+  border-radius: 6px;
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.logout:hover {
+  background: #f3f4f6;
+}
