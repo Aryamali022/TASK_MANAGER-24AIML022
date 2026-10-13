@@ -7,6 +7,7 @@ const jwt = require('jsonwebtoken');
 const Task = require('./module/task');
 const User = require('./module/user');
 const auth = require('./middleware/auth');
+const { sendTaskCompletedEmail } = require('./utils/mailer');
 const {
     validateCredentials,
     validateTask,
@@ -111,15 +112,24 @@ app.put('/tasks/:id', auth, validateCompleted, async(req, res) => {
     try {
         // The user filter means you cannot update someone else's task,
         // even if you guess its id.
-        const task = await Task.findOneAndUpdate(
-            { _id: req.params.id, user: req.user.id },
-            { completed },
-            { new: true },
-        );
+        const task = await Task.findOne({ _id: req.params.id, user: req.user.id });
         if (!task) {
             return res.status(404).json({ message: 'Task not found' });
         }
+
+        // Only email on the change "not done" -> "done", not on every save.
+        const justCompleted = completed && !task.completed;
+
+        task.completed = completed;
+        await task.save();
+
         res.status(200).json(task);
+
+        // Sent after the response so the user is not kept waiting on SMTP.
+        // The address comes from the JWT, i.e. the logged-in user's own email.
+        if (justCompleted) {
+            sendTaskCompletedEmail(req.user.email, task);
+        }
     } catch (err) {
         res.status(400).json({ message: err.message });
     }
