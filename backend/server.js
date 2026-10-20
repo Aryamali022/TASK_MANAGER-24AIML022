@@ -1,20 +1,23 @@
+// Load .env first: utils/cache.js reads CACHE_TTL / CACHE_ENABLED as soon as
+// it is required.
+const dotenv = require('dotenv');
+dotenv.config();
+
 const express = require('express');
 const mongoose = require('mongoose');
-const dotenv = require('dotenv');
 const bcrypt = require('bcrypt');
 const jwt = require('jsonwebtoken');
 
 const Task = require('./module/task');
 const User = require('./module/user');
 const auth = require('./middleware/auth');
+const cache = require('./utils/cache');
 const { sendTaskCompletedEmail } = require('./utils/mailer');
 const {
     validateCredentials,
     validateTask,
     validateCompleted,
 } = require('./middleware/validate');
-
-dotenv.config();
 
 const app = express();
 
@@ -85,13 +88,50 @@ app.post('/login', validateCredentials, async(req, res) => {
    TASK ROUTES  (protected - "auth" runs first on every one of them)
    ========================================================================= */
 
+// GET /tasks -> cache check -> HIT: return cached list
+//                           -> MISS: query MongoDB, store in cache, return
+// The X-Cache header shows which one happened (visible in Postman).
 app.get('/tasks', auth, async(req, res) => {
+    const key = cache.keys.allTasks(req.user.id);
     try {
-        // Only this user's tasks.
-        const tasks = await Task.find({ user: req.user.id });
+        const cached = cache.get(key);
+        if (cached) {
+            res.set('X-Cache', 'HIT');
+            return res.status(200).json(cached);
+        }
+
+        // Only this user's tasks. lean() returns plain objects, which are
+        // cheaper to build and safe to keep in the cache.
+        const tasks = await Task.find({ user: req.user.id }).lean();
+        cache.set(key, tasks);
+
+        res.set('X-Cache', 'MISS');
         res.status(200).json(tasks);
     } catch (err) {
         res.status(500).json({ message: err.message });
+    }
+});
+
+// GET /tasks/:id -> same idea, cached under its own key per task.
+app.get('/tasks/:id', auth, async(req, res) => {
+    const key = cache.keys.task(req.user.id, req.params.id);
+    try {
+        const cached = cache.get(key);
+        if (cached) {
+            res.set('X-Cache', 'HIT');
+            return res.status(200).json(cached);
+        }
+
+        const task = await Task.findOne({ _id: req.params.id, user: req.user.id }).lean();
+        if (!task) {
+            return res.status(404).json({ message: 'Task not found' });
+        }
+        cache.set(key, task);
+
+        res.set('X-Cache', 'MISS');
+        res.status(200).json(task);
+    } catch (err) {
+        res.status(400).json({ message: err.message });
     }
 });
 
@@ -101,6 +141,8 @@ app.post('/tasks', auth, validateTask, async(req, res) => {
             title : req.body.title,
             description : req.body.description,
             user : req.user.id });
+        // The list changed, so the cached list is now stale.
+        cache.invalidate(cache.keys.allTasks(req.user.id));
         res.status(201).json(newtask);
     } catch (err) {
         res.status(400).json({ message: err.message });
@@ -123,6 +165,12 @@ app.put('/tasks/:id', auth, validateCompleted, async(req, res) => {
         task.completed = completed;
         await task.save();
 
+        // Both the list and this task's own entry are now stale.
+        cache.invalidate(
+            cache.keys.allTasks(req.user.id),
+            cache.keys.task(req.user.id, task._id),
+        );
+
         res.status(200).json(task);
 
         // Sent after the response so the user is not kept waiting on SMTP.
@@ -144,10 +192,29 @@ app.delete('/tasks/:id', auth, async(req, res) => {
         if (!task) {
             return res.status(404).json({ message: 'Task not found' });
         }
+        cache.invalidate(
+            cache.keys.allTasks(req.user.id),
+            cache.keys.task(req.user.id, task._id),
+        );
         res.status(200).json({ message: 'Task deleted successfully' });
     } catch (err) {
         res.status(400).json({ message: err.message });
     }
+});
+
+/* =========================================================================
+   DEBUG  (cache statistics - counts and key names only, no task data)
+   ========================================================================= */
+
+// GET /debug/cache -> hits, misses, hit rate, TTL and the keys in memory
+app.get('/debug/cache', (req, res) => {
+    res.status(200).json(cache.stats());
+});
+
+// DELETE /debug/cache -> reset the hit/miss counters before a new experiment
+app.delete('/debug/cache', (req, res) => {
+    cache.resetStats();
+    res.status(200).json(cache.stats());
 });
 
 app.listen(PORT, () => {
