@@ -13,6 +13,8 @@ const User = require('./module/user');
 const auth = require('./middleware/auth');
 const cache = require('./utils/cache');
 const { sendTaskCompletedEmail } = require('./utils/mailer');
+const taskEvents = require('./events/events');
+require('./events/listeners'); // registers the task-created / task-deleted handlers
 const {
     validateCredentials,
     validateTask,
@@ -144,6 +146,16 @@ app.post('/tasks', auth, validateTask, async(req, res) => {
         // The list changed, so the cached list is now stale.
         cache.invalidate(cache.keys.allTasks(req.user.id));
         res.status(201).json(newtask);
+        console.log(`[API] Response sent at ${new Date().toISOString()}`);
+
+        // The notification runs in the background (events/listeners.js);
+        // emit() returns straight away and does not wait for it.
+        taskEvents.emit('task-created', {
+            task: newtask,
+            user: req.user,
+            emittedAt: Date.now(),
+        });
+        console.log(`[API] task-created emitted, route finished at ${new Date().toISOString()}`);
     } catch (err) {
         res.status(400).json({ message: err.message });
     }
@@ -197,6 +209,13 @@ app.delete('/tasks/:id', auth, async(req, res) => {
             cache.keys.task(req.user.id, task._id),
         );
         res.status(200).json({ message: 'Task deleted successfully' });
+        console.log(`[API] Response sent at ${new Date().toISOString()}`);
+
+        taskEvents.emit('task-deleted', {
+            task,
+            user: req.user,
+            emittedAt: Date.now(),
+        });
     } catch (err) {
         res.status(400).json({ message: err.message });
     }
