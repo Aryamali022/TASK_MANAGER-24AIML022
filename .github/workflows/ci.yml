@@ -1,0 +1,35 @@
+name: CI Pipeline
+
+# Run on every push to main (and allow a manual run from the Actions tab).
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  build-and-test:
+    runs-on: ubuntu-latest
+
+    # The Node project lives in backend/, so every `run` step starts there.
+    defaults:
+      run:
+        working-directory: backend
+
+    steps:
+      - name: Check out code
+        uses: actions/checkout@v4
+
+      # Node 22: mongoose 9 and nodemailer 10 need Node 20 or newer, so the
+      # Node 18 from the lab sheet would not run this backend.
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: backend/package-lock.json
+
+      - name: Install dependencies
+        run: npm install
+
+      - name: Run tests
+        run: npm test

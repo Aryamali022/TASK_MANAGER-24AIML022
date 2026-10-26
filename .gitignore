@@ -1,0 +1,3 @@
+node_modules/
+# Real secrets (MONGO_URI, JWT_SECRET, SMTP_PASS). Commit .env.example instead.
+.env
