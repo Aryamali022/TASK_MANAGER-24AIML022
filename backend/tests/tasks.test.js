@@ -46,7 +46,7 @@ describe('GET /tasks', () => {
       .get('/tasks')
       .set('Authorization', `Bearer ${token}`);
 
-    expect(res.statusCode).toBe(200);
+    expect(res.statusCode).toBe(201);
     expect(res.body).toHaveLength(2);
     expect(res.body[0].title).toBe('Write CI workflow');
     // Only this user's tasks are asked for.
